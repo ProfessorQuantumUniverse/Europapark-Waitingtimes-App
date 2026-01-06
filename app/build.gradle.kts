@@ -2,7 +2,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-    id("kotlin-kapt") // Für Hilt
+    id("com.google.devtools.ksp") // KSP statt KAPT für Hilt
     id("com.google.dagger.hilt.android") // Hilt Plugin
     id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.plugin.serialization") // Kotlinx Serialization Plugin
@@ -56,38 +56,39 @@ android {
 
 dependencies {
     // Core & AppCompat
-    implementation("androidx.core:core-ktx:1.16.0")
+    implementation("androidx.core:core-ktx:1.17.0")
     implementation("androidx.appcompat:appcompat:1.7.1") // Kann ggf. weg bei reinen Compose-Apps
 
     // Lifecycle
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.1")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.1")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.10.0")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0")
 
     // Compose
-    implementation(platform("androidx.compose:compose-bom:2025.06.01")) // Neueste BOM prüfen
+    implementation(platform("androidx.compose:compose-bom:2025.12.01")) // Neueste BOM prüfen
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3") // Material 3
-    implementation("androidx.activity:activity-compose:1.10.1")
+    implementation("androidx.activity:activity-compose:1.12.2")
 
     // Retrofit & Kotlinx Serialization
-    implementation("com.squareup.retrofit2:retrofit:2.9.0")
+    implementation("com.squareup.retrofit2:retrofit:3.0.0")
     implementation("com.squareup.retrofit2:converter-kotlinx-serialization:3.0.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
-    implementation("com.squareup.okhttp3:okhttp:4.11.0")
+    implementation("com.squareup.okhttp3:okhttp:5.3.2")
     implementation("com.squareup.okhttp3:logging-interceptor:4.11.0") // Für Debugging
 
     // Hilt (Dependency Injection)
-    implementation("com.google.dagger:hilt-android:2.51.1")
+    implementation("com.google.dagger:hilt-android:2.56.2")
     implementation(libs.androidx.compose.foundation) // Neueste Version prüfen
-    kapt("com.google.dagger:hilt-compiler:2.51.1")
+    ksp("com.google.dagger:hilt-compiler:2.56.2")
     implementation("androidx.hilt:hilt-navigation-compose:1.2.0") // Neueste Version prüfen
 
     // --- NEU: WorkManager für Hintergrund-Benachrichtigungen ---
     implementation("androidx.work:work-runtime-ktx:2.10.2")
     implementation("androidx.hilt:hilt-work:1.2.0")
-    kapt("androidx.hilt:hilt-compiler:1.2.0")
+    ksp("androidx.hilt:hilt-compiler:1.2.0")
+
 
     // Accompanist SwipeRefresh (Pull-to-Refresh)
     implementation("com.google.accompanist:accompanist-swiperefresh:0.32.0") // Neueste Version prüfen
@@ -116,10 +117,5 @@ dependencies {
 
     // Hilt WorkManager Integration
     implementation("androidx.hilt:hilt-work:1.2.0")
-    kapt("androidx.hilt:hilt-compiler:1.2.0")
-}
-
-// Hilt Kapt Konfiguration
-kapt {
-    correctErrorTypes = true
+    ksp("androidx.hilt:hilt-compiler:1.2.0")
 }

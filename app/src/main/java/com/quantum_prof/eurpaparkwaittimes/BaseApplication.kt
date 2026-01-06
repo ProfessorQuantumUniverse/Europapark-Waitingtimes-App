@@ -21,9 +21,11 @@ class BaseApplication : Application(), Configuration.Provider {
     lateinit var waitTimeCheckService: WaitTimeCheckService
 
     override val workManagerConfiguration: Configuration
-        get() = Configuration.Builder()
-            .setWorkerFactory(workerFactory)
-            .build()
+        get() {
+            return Configuration.Builder()
+                .setWorkerFactory(workerFactory)
+                .build()
+        }
 
     override fun onCreate() {
         super.onCreate()
