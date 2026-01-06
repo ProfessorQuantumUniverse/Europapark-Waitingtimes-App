@@ -1,0 +1,328 @@
+package com.quantum_prof.eurpaparkwaittimes.ui.theme.main
+
+import android.content.SharedPreferences
+import androidx.core.content.edit
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.quantum_prof.eurpaparkwaittimes.data.AttractionWaitTime
+import com.quantum_prof.eurpaparkwaittimes.data.WaitTimeRepository
+import com.quantum_prof.eurpaparkwaittimes.data.WaitTimeResult
+import com.quantum_prof.eurpaparkwaittimes.data.notification.AlertRepository
+import com.quantum_prof.eurpaparkwaittimes.data.notification.WaitTimeAlert
+import com.quantum_prof.eurpaparkwaittimes.di.StorageModule.KEY_FAVORITE_CODES
+import com.quantum_prof.eurpaparkwaittimes.di.StorageModule.KEY_HAS_SEEN_WELCOME
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import javax.inject.Inject
+import java.util.Locale
+import com.quantum_prof.eurpaparkwaittimes.data.CrowdLevel
+import com.quantum_prof.eurpaparkwaittimes.worker.WaitTimeCheckService
+
+// --- GEÄNDERT: WaitTimeUiState erweitert ---
+data class WaitTimeUiState(
+    val isLoading: Boolean = false,
+    val waitTimes: List<AttractionWaitTime> = emptyList(),
+    val error: String? = null,
+    val lastUpdated: Long = 0L, // Zeitpunkt der letzten erfolgreichen Aktualisierung
+    val currentSortType: SortType = SortType.NAME, // Standard-Sortierung
+    val currentSortDirection: SortDirection = SortDirection.ASCENDING, // Standard-Richtung
+    val isOfflineData: Boolean = false, // Flag für Offline-Daten
+    // --- NEU: Status für Favoriten und Filter ---
+    val favoriteCodes: Set<String> = emptySet(), // Set der Favoriten-Attraktionscodes
+    val filterOnlyOpen: Boolean = false, // Flag, ob nur geöffnete Attraktionen angezeigt werden
+    val activeAlerts: List<WaitTimeAlert> = emptyList(),
+    val crowdLevel: CrowdLevel? = null,
+    val searchQuery: String = "", // Suchbegriff für Attraktionen
+    val allAttractionsClosed: Boolean = false, // Flag ob alle Attraktionen geschlossen sind
+    val showWelcomeDialog: Boolean = false
+)
+
+@HiltViewModel
+class MainViewModel @Inject constructor(
+    private val repository: WaitTimeRepository,
+    // --- NEU: SharedPreferences injecten ---
+    private val sharedPreferences: SharedPreferences,
+    private val alertRepository: AlertRepository,
+    private val waitTimeCheckService: WaitTimeCheckService
+) : ViewModel() {
+
+    private val _uiState = MutableStateFlow(WaitTimeUiState())
+    val uiState: StateFlow<WaitTimeUiState> = _uiState.asStateFlow()
+
+    // --- NEU: Zwischenspeicher für die originalen, ungefilterten Daten ---
+    private var originalFetchedWaitTimes: List<AttractionWaitTime> = emptyList()
+
+    init {
+        loadFavorites() // Lade Favoriten ZUERST
+        checkWelcomeDialog()
+        loadAlerts()
+        fetchWaitTimes() // Dann lade die Wartezeiten (wendet initiale Filter/Sortierung an)
+    }
+
+    // --- NEU: Funktion zum Laden der Favoriten aus SharedPreferences ---
+    private fun loadFavorites() {
+        val favorites = sharedPreferences.getStringSet(KEY_FAVORITE_CODES, emptySet()) ?: emptySet()
+        _uiState.update { it.copy(favoriteCodes = favorites) }
+    }
+
+    private fun checkWelcomeDialog() {
+        val hasSeen = sharedPreferences.getBoolean(KEY_HAS_SEEN_WELCOME, false)
+        _uiState.update { it.copy(showWelcomeDialog = !hasSeen) }
+    }
+
+    fun dismissWelcomeDialog() {
+        sharedPreferences.edit {
+            putBoolean(KEY_HAS_SEEN_WELCOME, true)
+        }
+        _uiState.update { it.copy(showWelcomeDialog = false) }
+    }
+
+    private fun loadAlerts() {
+        viewModelScope.launch {
+            val alerts = alertRepository.getAlerts()
+            _uiState.update { it.copy(activeAlerts = alerts) }
+        }
+    }
+
+    fun addAlert(attraction: AttractionWaitTime, targetTime: Int) {
+        viewModelScope.launch {
+            val newAlert = WaitTimeAlert(
+                attractionCode = attraction.code,
+                attractionName = attraction.name,
+                targetTime = targetTime
+            )
+            alertRepository.addAlert(newAlert)
+            loadAlerts() // Reload alerts to update UI
+            waitTimeCheckService.triggerOneTimeCheck()
+        }
+    }
+
+    fun removeAlert(attractionCode: String) {
+        viewModelScope.launch {
+            alertRepository.removeAlert(attractionCode)
+            loadAlerts() // Reload alerts to update UI
+        }
+    }
+
+    fun toggleSortDirection() {
+        // Bestimme die neue Richtung
+        val newDirection = if (_uiState.value.currentSortDirection == SortDirection.ASCENDING) {
+            SortDirection.DESCENDING
+        } else {
+            SortDirection.ASCENDING
+        }
+
+        // Update die Richtung im State *zuerst*
+        _uiState.update { it.copy(currentSortDirection = newDirection) }
+
+        // Wende Filter und die *neue* Sortierung auf die ORIGINALEN Daten an
+        applyFiltersAndSorting(originalFetchedWaitTimes)
+    }
+
+    // --- NEU: Funktion zum Umschalten eines Favoriten ---
+    fun toggleFavorite(code: String) {
+        val currentFavorites = _uiState.value.favoriteCodes
+        val newFavorites = if (currentFavorites.contains(code)) {
+            currentFavorites - code // Entfernen
+        } else {
+            currentFavorites + code // Hinzufügen
+        }
+
+        // Speichere in SharedPreferences mit KTX
+        sharedPreferences.edit {
+            putStringSet(KEY_FAVORITE_CODES, newFavorites)
+        }
+
+        // Aktualisiere den UI State mit den neuen Favoriten
+        _uiState.update { it.copy(favoriteCodes = newFavorites) }
+
+        // Wende Filter und Sortierung auf die ORIGINALEN Daten an
+        applyFiltersAndSorting(originalFetchedWaitTimes)
+    }
+
+    // --- NEU: Funktion zum Setzen des Filters für offene Attraktionen ---
+    fun setFilterOnlyOpen(enabled: Boolean) {
+        // Nur fortfahren, wenn sich der Wert ändert
+        if (enabled == _uiState.value.filterOnlyOpen) return
+
+        // Update den Filter-Status im State
+        _uiState.update { it.copy(filterOnlyOpen = enabled) }
+
+        // Wende Filter und Sortierung auf die ORIGINALEN Daten an
+        applyFiltersAndSorting(originalFetchedWaitTimes)
+    }
+
+    // --- NEU: Funktion zum Setzen der Suchanfrage ---
+    fun setSearchQuery(query: String) {
+        _uiState.update { it.copy(searchQuery = query) }
+        applyFiltersAndSorting(originalFetchedWaitTimes)
+    }
+
+
+    fun fetchWaitTimes(isRefresh: Boolean = false) {
+        if (_uiState.value.isLoading && !isRefresh) return
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, error = if (isRefresh) null else it.error) } // Fehler nur bei explizitem Refresh löschen
+
+            val waitTimesDeferred = async { repository.getEuropaparkWaitTimes(forceRefresh = isRefresh) }
+            val crowdLevelDeferred = async { repository.getCrowdLevel() }
+
+            val result: Result<WaitTimeResult> = waitTimesDeferred.await()
+            val crowdLevelResult: Result<CrowdLevel> = crowdLevelDeferred.await()
+
+            var newCrowdLevel: CrowdLevel? = _uiState.value.crowdLevel
+            crowdLevelResult.onSuccess {
+                newCrowdLevel = it
+            }
+
+            result.onSuccess { (times, isFromCache) ->
+                // Speichere die Originaldaten (optional, aber gut für reines Filtern/Sortieren)
+                originalFetchedWaitTimes = times
+
+                // Wende aktuelle Filter UND Sortierung auf die NEUEN Daten an
+                // Diese Funktion aktualisiert auch den waitTimes-Teil des States
+                applyFiltersAndSorting(times)
+
+                // Update restlichen State (isLoading, Offline-Status, Fehler, Zeitstempel)
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        isOfflineData = isFromCache,
+                        // Fehler nur löschen, wenn Daten frisch von API kamen
+                        error = if (!isFromCache) null else it.error,
+                        // Aktualisiere Timestamp nur bei frischen Daten oder wenn noch keiner gesetzt
+                        lastUpdated = if (!isFromCache || it.lastUpdated == 0L) System.currentTimeMillis() else it.lastUpdated,
+                        // waitTimes wird bereits durch applyFiltersAndSorting gesetzt
+                        // favoriteCodes bleiben unverändert (werden separat verwaltet)
+                        // filterOnlyOpen bleibt unverändert (wird separat verwaltet)
+                        crowdLevel = newCrowdLevel
+                    )
+                }
+
+            }.onFailure { throwable ->
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        error = "Laden fehlgeschlagen: ${throwable.localizedMessage ?: "Unbekannter Fehler"}",
+                        // Behalte alte Daten bei, markiere sie aber als offline, falls vorhanden
+                        isOfflineData = it.waitTimes.isNotEmpty(),
+                        crowdLevel = newCrowdLevel // Update crowd level even if wait times failed
+                    )
+                }
+            }
+        }
+    }
+
+    // --- GEÄNDERT: changeSortOrder wendet Filterung & Sortierung neu an ---
+    fun changeSortOrder(newType: SortType, newDirection: SortDirection) {
+        if (newType == _uiState.value.currentSortType && newDirection == _uiState.value.currentSortDirection) {
+            return
+        }
+
+        // Update die Sortierparameter im State *zuerst*
+        _uiState.update { it.copy(currentSortType = newType, currentSortDirection = newDirection) }
+
+        // Wende Filter und die *neue* Sortierung auf die ORIGINALEN Daten an
+        applyFiltersAndSorting(originalFetchedWaitTimes)
+    }
+
+
+
+
+    // --- GEÄNDERT: Private Hilfsfunktion zum Anwenden der Sortierung (umbenannt) ---
+    // Wird jetzt von applyFiltersAndSorting aufgerufen
+    private fun applySortingInternal(
+        list: List<AttractionWaitTime>,
+        sortType: SortType,
+        sortDirection: SortDirection,
+        favorites: Set<String> // Set der Favoriten-Codes
+    ): List<AttractionWaitTime> {
+
+        // 1. Primärer Comparator: Favoriten immer zuerst
+        //    compareByDescending: true (ist Favorit) wird als "größer" betrachtet und kommt daher bei DESC zuerst.
+        val favoritesComparator = compareByDescending<AttractionWaitTime> { it.code in favorites }
+
+        // 2. Sekundärer Comparator: Basierend auf der Benutzerauswahl (Name oder Wartezeit)
+        val secondaryComparator: Comparator<AttractionWaitTime> = when (sortType) {
+            SortType.NAME -> {
+                // Sortiere nach Name:
+                // - nullsLast(): Namenlose Einträge ans Ende.
+                // - String.CASE_INSENSITIVE_ORDER: Ignoriere Groß/Kleinschreibung.
+                compareBy(nullsLast(String.CASE_INSENSITIVE_ORDER)) { it.name }
+            }
+            SortType.WAIT_TIME -> {
+                // Sortiere nach Wartezeit:
+                compareBy<AttractionWaitTime, Int?>(nullsLast()) { attraction ->
+                    // Behandle nicht-geöffnete Attraktionen für die Sortierung:
+                    // Setze ihre "effektive" Wartezeit auf einen sehr hohen Wert, damit sie bei ASC ans Ende kommen.
+                    if (attraction.status.lowercase(Locale.GERMANY) == "opened") {
+                        attraction.waitTimeMinutes
+                    } else {
+                        Int.MAX_VALUE // Geschlossene/unbekannte Attraktionen gelten als "längste" Wartezeit
+                    }
+                }.thenBy(nullsLast(String.CASE_INSENSITIVE_ORDER)) {
+                    // Bei gleicher effektiver Wartezeit (z.B. alle geschlossenen), sortiere nach Name
+                    it.name
+                }
+            }
+            // Zukünftige Sortieroptionen könnten hier hinzugefügt werden
+            // z.B. SortType.FAVORITE (obwohl Favoriten bereits primär behandelt werden)
+        }
+
+        // 3. Kombiniere die Comparators: Erst nach Favorit, dann nach dem sekundären Kriterium
+        val finalComparator = favoritesComparator.thenComparing(secondaryComparator)
+
+        // 4. Wende die Sortierung an
+        return if (sortDirection == SortDirection.ASCENDING) {
+            // Aufsteigend: Favoriten zuerst, dann nach sekundärem Kriterium aufsteigend
+            list.sortedWith(finalComparator)
+        } else {
+            // Absteigend: Favoriten bleiben zuerst, aber die sekundäre Sortierung wird umgedreht.
+            // Wir erstellen einen neuen Comparator, der Favoriten priorisiert und dann absteigend sortiert.
+            val descendingComparator = favoritesComparator.thenComparing(secondaryComparator.reversed())
+            list.sortedWith(descendingComparator)
+
+            // Einfachere Alternative, falls das Verhalten "alles umdrehen" (auch Favoriten nach unten) akzeptabel wäre:
+            // list.sortedWith(finalComparator.reversed())
+            // Die obere Lösung (mit thenComparing(secondaryComparator.reversed())) ist aber meistens das, was man will.
+        }
+    }
+
+    // Stelle sicher, dass applyFiltersAndSorting diese Funktion korrekt aufruft:
+    private fun applyFiltersAndSorting(sourceList: List<AttractionWaitTime>) {
+        // Check if all attractions are closed
+        val allClosed = sourceList.isNotEmpty() && sourceList.all {
+            it.status.lowercase(Locale.GERMANY) != "opened"
+        }
+
+        var filteredList = if (_uiState.value.filterOnlyOpen) {
+            sourceList.filter { it.status.lowercase(Locale.GERMANY) == "opened" }
+        } else {
+            sourceList
+        }
+
+        // Apply search filter
+        val searchQuery = _uiState.value.searchQuery
+        if (searchQuery.isNotBlank()) {
+            filteredList = filteredList.filter { attraction ->
+                attraction.name.contains(searchQuery, ignoreCase = true) ||
+                attraction.code.contains(searchQuery, ignoreCase = true)
+            }
+        }
+
+        val sortedAndFilteredList = applySortingInternal(
+            filteredList,
+            _uiState.value.currentSortType,
+            _uiState.value.currentSortDirection,
+            _uiState.value.favoriteCodes
+        )
+
+        _uiState.update { it.copy(waitTimes = sortedAndFilteredList, allAttractionsClosed = allClosed) }
+    }
+}

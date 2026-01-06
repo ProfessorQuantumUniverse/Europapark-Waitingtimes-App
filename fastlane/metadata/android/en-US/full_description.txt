@@ -1,4 +1,4 @@
-Check current wait times for all rides in <b>Phantasialand Brühl</b>.
+Check current wait times for all rides in <b>Europapark Rust</b>.
 
 The app is small but way faster and cleaner then the official app.  
 No ads. No tracking. No account required.

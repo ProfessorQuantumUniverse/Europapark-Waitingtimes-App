@@ -1,25 +1,27 @@
-# 🎢 Phantasialand Wait Times App
+# 🎢 Europa-Park Wait Times App
 
-A simple Android app for displaying current wait times for attractions at Phantasialand Theme Park. It helps visitors better plan their day at the park by retrieving live data (where available) and offering various viewing and organization options.
+A simple Android app for displaying current wait times for attractions at Europa-Park. It helps visitors better plan their day at the park by retrieving live data (where available) and offering various viewing and organization options.
 
 [<img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png"
      alt="Get it on F-Droid"
-     height="80">](https://f-droid.org/packages/com.quantum_prof.phantalandwaittimes/)
+     height="80">](https://f-droid.org/packages/com.quantum_prof.eurpaparkwaittimes/)
 [<img src="https://play.google.com/intl/en_us/badges/images/generic/en-play-badge.png"
      alt="Get it on Google Play"
-     height="80">](https://play.google.com/store/apps/details?id=com.quantum_prof.phantalandwaittimes)
+     height="80">](https://play.google.com/store/apps/details?id=com.quantum_prof.eurpaparkwaittimes)
 
-Or download the latest APK from the [Releases Section](https://github.com/ProfessorQuantumUniverse/Phantasialand-Waitingtimes-App/releases/latest).
+Or download the latest APK from the [Releases Section](https://github.com/ProfessorQuantumUniverse/Europapark-Waitingtimes-App/releases/latest).
 
 ## ✨ Features
 
 * **Current Wait Times:** Displays wait times reported by the data source.
+* **Crowd Level:** Shows the current crowd level at the park.
 * **Attraction Status:** Shows whether an attraction is open, closed, or under maintenance.
 * **Offline Caching:** Saves the last successfully retrieved data to display the last known wait times even without an internet connection.
 * **Pull-to-Refresh:** Manually refresh the data by pulling down the list.
 * **Sorting:** Ability to sort attractions by name (A-Z, Z-A) or by wait time (shortest/longest first).
 * **Filtering:** Option to display only the currently open attractions.
 * **Favorites:** Mark your favorite attractions with a star. Favorites are saved and remain active even after app restarts.
+* **Notifications:** Get notified when wait times for your favorite attractions drop.
 * **Attraction Icons:** Visually indicate the attraction type (e.g., roller coaster, water ride, show) with appropriate icons.
 * **Thematic Design:** A background image creates a park atmosphere.
 * **Last Updated:** Displays when the data was last successfully retrieved.
@@ -32,11 +34,12 @@ Or download the latest APK from the [Releases Section](https://github.com/Profes
 * **Architecture:** MVVM (Model-View-ViewModel)
 * **Asynchrony:** Kotlin Coroutines & StateFlow
 * **Dependency Injection:** Hilt
-* **Network:** (Probably Retrofit or Ktor - please specify which one you use)
+* **Network:** Retrofit
+* **Background Tasks:** WorkManager
 * **Data Storage (Cache/Favorites):** SharedPreferences
 * **UI Components:**
-* Material 3 Design Components
-* Accompanist SwipeRefresh for pull-to-refresh
+    * Material 3 Design Components
+    * Accompanist SwipeRefresh for pull-to-refresh
 
 ## 🚀 Future Ideas / Possible Extensions
 

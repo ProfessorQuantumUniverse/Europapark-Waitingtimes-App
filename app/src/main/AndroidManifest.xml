@@ -4,10 +4,11 @@
 
     <!-- Internet Permission hinzufügen -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
     <application
-        android:name="com.quantum_prof.phantalandwaittimes.BaseApplication"
+        android:name=".BaseApplication"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -15,14 +16,14 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.PhantasialandWaitTimes"
+        android:theme="@style/Theme.EuropaparkWaitTimes"
         tools:targetApi="31">
 
         <activity
-            android:name="com.quantum_prof.phantalandwaittimes.MainActivity"
+            android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
-            android:theme="@style/Theme.PhantasialandWaitTimes">
+            android:theme="@style/Theme.EuropaparkWaitTimes">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

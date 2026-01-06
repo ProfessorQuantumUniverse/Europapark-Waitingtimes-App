@@ -19,6 +19,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Phantasialand Waiting Times"
+rootProject.name = "Europapark Waiting Times"
 include(":app")
  
